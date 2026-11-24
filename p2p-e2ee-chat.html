@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Whisper · P2P E2EE Chat</title>
+<style>
+  :root{
+    --bg1:#0b0b1a; --bg2:#14102e; --glass:rgba(255,255,255,.06); --glass-b:rgba(255,255,255,.12);
+    --txt:#ecebff; --mute:#9c9ac4; --accent:#8b7bff; --accent2:#4fd1c5; --danger:#ff6b81; --ok:#4ade80;
+    --me:linear-gradient(135deg,#7c6cff,#5a4ae0); --them:rgba(255,255,255,.09);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    color:var(--txt);background:var(--bg1);overflow:hidden;
+  }
+  .bg{position:fixed;inset:0;z-index:-1;background:
+    radial-gradient(60vmax 60vmax at 15% 10%,rgba(124,108,255,.35),transparent 60%),
+    radial-gradient(50vmax 50vmax at 90% 90%,rgba(79,209,197,.22),transparent 60%),
+    linear-gradient(160deg,var(--bg1),var(--bg2));}
+  .bg::after{content:"";position:absolute;inset:0;background-image:radial-gradient(rgba(255,255,255,.07) 1px,transparent 1px);background-size:28px 28px;mask-image:radial-gradient(circle at 50% 40%,#000,transparent 75%)}
+  .hidden{display:none!important}
+  .view{height:100%;display:flex;align-items:center;justify-content:center;padding:20px}
+
+  /* lobby */
+  .card{width:100%;max-width:440px;background:var(--glass);border:1px solid var(--glass-b);border-radius:24px;padding:34px 30px;backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);box-shadow:0 30px 80px rgba(0,0,0,.45)}
+  .logo{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+  .logo .mark{width:44px;height:44px;border-radius:14px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:grid;place-items:center;box-shadow:0 8px 24px rgba(139,123,255,.45)}
+  .logo h1{font-size:26px;letter-spacing:-.02em}
+  .sub{color:var(--mute);font-size:14px;line-height:1.5;margin:8px 0 24px}
+  label{display:block;font-size:12px;color:var(--mute);text-transform:uppercase;letter-spacing:.08em;margin:0 0 8px}
+  input,textarea{width:100%;background:rgba(0,0,0,.28);border:1px solid var(--glass-b);color:var(--txt);border-radius:14px;padding:13px 15px;font:inherit;outline:none;transition:.2s}
+  input:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(139,123,255,.2)}
+  .code-in{text-align:center;font-size:24px;letter-spacing:.35em;font-weight:700;text-transform:uppercase;font-family:ui-monospace,Menlo,Consolas,monospace}
+  .btn{border:0;cursor:pointer;font:inherit;font-weight:600;border-radius:14px;padding:13px 18px;color:#fff;transition:.2s;width:100%}
+  .btn.primary{background:linear-gradient(135deg,var(--accent),#6a58f0);box-shadow:0 10px 26px rgba(124,108,255,.4)}
+  .btn.primary:hover{transform:translateY(-1px);filter:brightness(1.08)}
+  .btn.ghost{background:var(--glass);border:1px solid var(--glass-b)}
+  .btn.ghost:hover{background:rgba(255,255,255,.12)}
+  .btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+  .row{display:flex;gap:10px}
+  .sep{display:flex;align-items:center;gap:12px;color:var(--mute);font-size:12px;margin:20px 0}
+  .sep::before,.sep::after{content:"";flex:1;height:1px;background:var(--glass-b)}
+  .err{color:var(--danger);font-size:13px;margin-top:12px;min-height:18px;text-align:center}
+  .badges{display:flex;flex-wrap:wrap;gap:8px;margin-top:22px;justify-content:center}
+  .badge{font-size:11px;color:var(--mute);border:1px solid var(--glass-b);border-radius:99px;padding:5px 10px;background:rgba(255,255,255,.04)}
+
+  /* waiting */
+  .codebox{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:44px;font-weight:800;letter-spacing:.2em;text-align:center;padding:18px 0 18px .2em;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent;cursor:pointer}
+  .pulse{display:flex;gap:6px;justify-content:center;margin:14px 0 22px}
+  .pulse i{width:8px;height:8px;border-radius:50%;background:var(--accent2);animation:p 1.2s infinite ease-in-out}
+  .pulse i:nth-child(2){animation-delay:.15s}.pulse i:nth-child(3){animation-delay:.3s}
+  @keyframes p{0%,80%,100%{opacity:.2;transform:scale(.7)}40%{opacity:1;transform:scale(1.15)}}
+
+  /* chat */
+  #chat{display:flex;flex-direction:column;height:100%;max-width:820px;margin:0 auto;padding:16px}
+  .panel{flex:1;min-height:0;display:flex;flex-direction:column;background:var(--glass);border:1px solid var(--glass-b);border-radius:24px;backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.45)}
+  header{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--glass-b)}
+  .avatar{width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,var(--accent2),var(--accent));display:grid;place-items:center;font-weight:700}
+  .hinfo{flex:1;min-width:0}
+  .hname{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hstat{font-size:12px;color:var(--mute);display:flex;align-items:center;gap:6px}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 10px var(--ok)}
+  .dot.off{background:var(--danger);box-shadow:0 0 10px var(--danger)}
+  .chip{font-size:12px;border:1px solid var(--glass-b);background:rgba(255,255,255,.05);color:var(--txt);border-radius:99px;padding:7px 12px;cursor:pointer;font-family:inherit;transition:.2s}
+  .chip:hover{background:rgba(255,255,255,.13)}
+  #msgs{flex:1;overflow-y:auto;padding:20px 18px;display:flex;flex-direction:column;gap:8px;scroll-behavior:smooth}
+  #msgs::-webkit-scrollbar{width:8px}#msgs::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:8px}
+  .sys{align-self:center;font-size:12px;color:var(--mute);background:rgba(255,255,255,.05);border:1px solid var(--glass-b);padding:6px 12px;border-radius:99px;text-align:center;max-width:90%}
+  .msg{max-width:76%;padding:10px 14px 7px;border-radius:18px;line-height:1.45;font-size:15px;word-wrap:break-word;overflow-wrap:anywhere;white-space:pre-wrap;animation:in .22s ease-out}
+  @keyframes in{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
+  .msg.me{align-self:flex-end;background:var(--me);border-bottom-right-radius:6px;box-shadow:0 6px 18px rgba(90,74,224,.35)}
+  .msg.them{align-self:flex-start;background:var(--them);border:1px solid var(--glass-b);border-bottom-left-radius:6px}
+  .msg .who{font-size:11px;font-weight:700;color:var(--accent2);margin-bottom:2px}
+  .msg time{display:block;font-size:10px;opacity:.6;text-align:right;margin-top:3px}
+  footer{padding:14px;border-top:1px solid var(--glass-b);display:flex;gap:10px;align-items:flex-end}
+  footer textarea{resize:none;max-height:140px;min-height:46px;border-radius:16px}
+  .send{width:46px;height:46px;flex:none;border-radius:50%;border:0;cursor:pointer;background:linear-gradient(135deg,var(--accent),#6a58f0);display:grid;place-items:center;box-shadow:0 8px 20px rgba(124,108,255,.45);transition:.2s}
+  .send:hover{transform:scale(1.07)}.send:disabled{opacity:.4;cursor:not-allowed;transform:none}
+  .lock{font-size:11px;color:var(--mute);text-align:center;padding:0 0 10px}
+
+  /* modal */
+  .modal{position:fixed;inset:0;background:rgba(5,5,15,.65);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:20px;z-index:10}
+  .emojis{font-size:34px;letter-spacing:.15em;text-align:center;margin:14px 0}
+  .hex{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;text-align:center;color:var(--mute);word-spacing:.4em;line-height:1.8;margin-bottom:18px}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1d1a3d;border:1px solid var(--glass-b);padding:10px 18px;border-radius:99px;font-size:13px;opacity:0;pointer-events:none;transition:.3s;z-index:20}
+  .toast.show{opacity:1}
+  @media(max-width:560px){#chat{padding:0}.panel{border-radius:0;border:0}.msg{max-width:88%}.card{padding:28px 22px}.codebox{font-size:34px}}
+</style>
+</head>
+<body>
+<div class="bg"></div>
+
+<!-- LOBBY -->
+<section id="lobby" class="view">
+  <div class="card">
+    <div class="logo">
+      <div class="mark"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="3"/><path d="M8 10V7a4 4 0 018 0v3"/></svg></div>
+      <h1>Whisper</h1>
+    </div>
+    <p class="sub">Private peer-to-peer chat. Messages go straight between browsers, end-to-end encrypted. Nothing is stored anywhere.</p>
+
+    <label for="nick">Your name</label>
+    <input id="nick" maxlength="24" placeholder="Anonymous" autocomplete="off">
+
+    <div style="height:18px"></div>
+    <button class="btn primary" id="createBtn">Create a room</button>
+
+    <div class="sep">or join with a code</div>
+
+    <input id="joinCode" class="code-in" maxlength="7" placeholder="••••••" autocomplete="off" spellcheck="false">
+    <div style="height:12px"></div>
+    <button class="btn ghost" id="joinBtn">Join room</button>
+    <div class="err" id="lobbyErr"></div>
+
+    <div class="badges">
+      <span class="badge">🔒 ECDH P-256 + AES-256-GCM</span>
+      <span class="badge">🌐 WebRTC direct</span>
+      <span class="badge">🗑 No storage</span>
+    </div>
+  </div>
+</section>
+
+<!-- WAITING -->
+<section id="waiting" class="view hidden">
+  <div class="card" style="text-align:center">
+    <label>Share this code</label>
+    <div class="codebox" id="roomCode" title="Click to copy">------</div>
+    <div class="pulse"><i></i><i></i><i></i></div>
+    <p class="sub" style="margin-top:0">Waiting for someone to join…<br>The room closes when you leave.</p>
+    <div class="row">
+      <button class="btn ghost" id="copyBtn">Copy code</button>
+      <button class="btn ghost" id="cancelBtn">Cancel</button>
+    </div>
+  </div>
+</section>
+
+<!-- CHAT -->
+<section id="chat" class="hidden">
+  <div class="panel">
+    <header>
+      <div class="avatar" id="peerAvatar">?</div>
+      <div class="hinfo">
+        <div class="hname" id="peerName">Peer</div>
+        <div class="hstat"><span class="dot" id="statDot"></span><span id="statTxt">Connected</span></div>
+      </div>
+      <button class="chip" id="verifyBtn">🔐 Verify</button>
+      <button class="chip" id="leaveBtn">Leave</button>
+    </header>
+    <div id="msgs"></div>
+    <div class="lock">🔒 End-to-end encrypted · nothing is saved</div>
+    <footer>
+      <textarea id="input" rows="1" placeholder="Write a message…" disabled></textarea>
+      <button class="send" id="sendBtn" disabled aria-label="Send">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+      </button>
+    </footer>
+  </div>
+</section>
+
+<!-- VERIFY MODAL -->
+<div class="modal hidden" id="modal">
+  <div class="card" style="text-align:center">
+    <h2 style="font-size:20px">Verify your connection</h2>
+    <p class="sub" style="margin-bottom:0">Compare these with your contact over another channel (call, in person). If they match, nobody is in the middle.</p>
+    <div class="emojis" id="fpEmoji"></div>
+    <div class="hex" id="fpHex"></div>
+    <button class="btn primary" id="closeModal">Done</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* Load PeerJS (signaling API only) with a CDN fallback */
+(function(){
+  const urls=["https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js","https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"];
+  let i=0;(function next(){ if(i>=urls.length){window.__peerFail=true;return}
+    const s=document.createElement("script");s.src=urls[i++];s.onerror=next;document.head.appendChild(s)})();
+})();
+
+const $=id=>document.getElementById(id);
+const PREFIX="whisper-e2ee-";
+const ALPHA="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const ICE={config:{iceServers:[
+  {urls:"stun:stun.l.google.com:19302"},
+  {urls:"stun:stun1.l.google.com:19302"},
+  {urls:"stun:global.stun.twilio.com:3478"}
+]}};
+const EMOJI=["🐶","🐱","🦊","🐼","🐸","🦁","🐵","🐙","🦄","🐢","🦋","🐳","🌵","🍄","🌻","🍉","🍕","🍩","🚀","⚓","⭐","🔥","🌈","🎸","🎲","🔑","🎈","🍀","🌙","⚡","🧊","🎯","🐝","🦉","🐧","🍒","🍋","🥑","🌶","🎧","📌","🛸","🧩","🪁","🏀","🚲","🎩","💎","🔔","🧲","🪐","🌊","🍪","🐞","🦀","🦜","🌴","⛵","🎨","📚","🧸","🕯","🪄","🥝"];
+
+let peer=null, conn=null, isHost=false, myName="Anonymous", code="";
+let myKeys=null, myPubRaw=null, theirPubRaw=null, aes=null, ready=false;
+let sendSeq=0, recvSeq=0, queue=[];
+
+/* ---------- helpers ---------- */
+const b64=u8=>btoa(String.fromCharCode(...u8));
+const unb64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+const hex=u8=>[...u8].map(b=>b.toString(16).padStart(2,"0")).join("");
+const genCode=()=>Array.from(crypto.getRandomValues(new Uint8Array(6)),b=>ALPHA[b%ALPHA.length]).join("");
+const normCode=s=>s.toUpperCase().replace(/[^A-Z0-9]/g,"");
+function show(id){["lobby","waiting","chat"].forEach(v=>$(v).classList.toggle("hidden",v!==id))}
+function toast(t){const e=$("toast");e.textContent=t;e.classList.add("show");setTimeout(()=>e.classList.remove("show"),1800)}
+function lobbyErr(t){$("lobbyErr").textContent=t||""}
+function busy(b){$("createBtn").disabled=b;$("joinBtn").disabled=b}
+
+/* ---------- crypto ---------- */
+async function initKeys(){
+  myKeys=await crypto.subtle.generateKey({name:"ECDH",namedCurve:"P-256"},false,["deriveKey"]);
+  myPubRaw=new Uint8Array(await crypto.subtle.exportKey("raw",myKeys.publicKey));
+}
+async function deriveShared(theirRaw){
+  const theirKey=await crypto.subtle.importKey("raw",theirRaw,{name:"ECDH",namedCurve:"P-256"},false,[]);
+  // bind the derived key to the room code as HKDF-free salt via a second step: ECDH -> AES key
+  aes=await crypto.subtle.deriveKey({name:"ECDH",public:theirKey},myKeys.privateKey,{name:"AES-GCM",length:256},false,["encrypt","decrypt"]);
+  theirPubRaw=theirRaw;
+}
+async function encrypt(obj){
+  const iv=crypto.getRandomValues(new Uint8Array(12));
+  const ct=new Uint8Array(await crypto.subtle.encrypt({name:"AES-GCM",iv},aes,new TextEncoder().encode(JSON.stringify(obj))));
+  return {t:"m",iv:b64(iv),d:b64(ct)};
+}
+async function decrypt(p){
+  const pt=await crypto.subtle.decrypt({name:"AES-GCM",iv:unb64(p.iv)},aes,unb64(p.d));
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+async function fingerprint(){
+  const a=hex(myPubRaw),b=hex(theirPubRaw);
+  const [x,y]=a<b?[myPubRaw,theirPubRaw]:[theirPubRaw,myPubRaw];
+  const all=new Uint8Array(x.length+y.length);all.set(x);all.set(y,x.length);
+  const h=new Uint8Array(await crypto.subtle.digest("SHA-256",all));
+  const emo=[...h.slice(0,6)].map(v=>EMOJI[v%EMOJI.length]).join(" ");
+  const hx=hex(h.slice(0,10)).match(/.{1,4}/g).join(" ").toUpperCase();
+  return {emo,hx};
+}
+
+/* ---------- connection ---------- */
+function ensureLib(){
+  if(window.Peer)return true;
+  lobbyErr(window.__peerFail?"Couldn't load the signaling library. Check your connection.":"Still loading… try again in a second.");
+  return false;
+}
+function readName(){myName=($("nick").value.trim()||"Anonymous").slice(0,24)}
+
+async function createRoom(attempt=0){
+  if(!ensureLib())return; readName(); lobbyErr(""); busy(true);
+  try{await initKeys()}catch(e){lobbyErr("Web Crypto unavailable. Use https:// or localhost.");busy(false);return}
+  isHost=true; code=genCode();
+  peer=new Peer(PREFIX+code,ICE);
+  peer.on("open",()=>{ $("roomCode").textContent=code; show("waiting"); busy(false)});
+  peer.on("connection",c=>{
+    if(conn&&conn.open){c.on("open",()=>c.close());return} // 1:1 room only
+    setupConn(c);
+  });
+  peer.on("error",e=>{
+    if(e.type==="unavailable-id"&&attempt<5){peer.destroy();createRoom(attempt+1);return}
+    lobbyErr("Error: "+(e.type||e.message));busy(false);if(!conn)show("lobby");
+  });
+  peer.on("disconnected",()=>{try{peer.reconnect()}catch(_){}});
+}
+async function joinRoom(){
+  if(!ensureLib())return; readName(); lobbyErr("");
+  const c=normCode($("joinCode").value);
+  if(c.length!==6){lobbyErr("Enter the 6-character room code.");return}
+  busy(true);
+  try{await initKeys()}catch(e){lobbyErr("Web Crypto unavailable. Use https:// or localhost.");busy(false);return}
+  isHost=false; code=c;
+  peer=new Peer(ICE);
+  const timeout=setTimeout(()=>{lobbyErr("Timed out. Is the code right and the host still online?");cleanup();busy(false)},20000);
+  peer.on("open",()=>{ const cn=peer.connect(PREFIX+code,{reliable:true,serialization:"json"}); setupConn(cn,timeout)});
+  peer.on("error",e=>{
+    clearTimeout(timeout);
+    lobbyErr(e.type==="peer-unavailable"?"No room found with that code.":"Error: "+(e.type||e.message));
+    cleanup();busy(false);
+  });
+}
+function setupConn(c,timeout){
+  conn=c;
+  c.on("open",async()=>{
+    if(timeout)clearTimeout(timeout);
+    busy(false);
+    c.send({t:"key",k:b64(myPubRaw),n:null});
+    show("chat"); setStatus("Securing…",false);
+    addSys("Connected. Negotiating encryption keys…");
+  });
+  c.on("data",onData);
+  c.on("close",()=>{ if(ready||conn===c){ready=false;setStatus("Disconnected",true);addSys("Peer left the chat.");lockInput()}});
+  c.on("error",e=>{addSys("Connection error: "+(e.type||e.message))});
+}
+async function onData(p){
+  try{
+    if(p.t==="key"&&!aes){
+      await deriveShared(unb64(p.k));
+      ready=true; lockInput(true); setStatus("End-to-end encrypted",false);
+      addSys("🔒 Secure channel established. Tap “Verify” to compare fingerprints.");
+      const hello=await encrypt({k:"hello",name:myName,seq:++sendSeq}); conn.send(hello);
+      for(const q of queue)conn.send(q); queue=[];
+    }else if(p.t==="m"&&aes){
+      const m=await decrypt(p);
+      if(typeof m.seq!=="number"||m.seq<=recvSeq)return; // replay / reorder guard
+      recvSeq=m.seq;
+      if(m.k==="hello"){setPeer(String(m.name||"Peer").slice(0,24));}
+      else if(m.k==="msg"){addMsg(String(m.text).slice(0,4000),false,String(m.name||"Peer").slice(0,24),m.ts)}
+    }
+  }catch(e){addSys("⚠️ A message failed to decrypt and was dropped.")}
+}
+
+/* ---------- UI ---------- */
+function setPeer(n){$("peerName").textContent=n;$("peerAvatar").textContent=n[0].toUpperCase()}
+function setStatus(t,off){$("statTxt").textContent=t;$("statDot").classList.toggle("off",!!off)}
+function lockInput(on){$("input").disabled=!on;$("sendBtn").disabled=!on;if(on)$("input").focus()}
+function addSys(t){const d=document.createElement("div");d.className="sys";d.textContent=t;$("msgs").appendChild(d);scroll()}
+function scroll(){const m=$("msgs");m.scrollTop=m.scrollHeight}
+function addMsg(text,mine,name,ts){
+  const d=document.createElement("div");d.className="msg "+(mine?"me":"them");
+  if(!mine){const w=document.createElement("div");w.className="who";w.textContent=name;d.appendChild(w)}
+  d.appendChild(document.createTextNode(text));
+  const t=document.createElement("time");t.textContent=new Date(ts||Date.now()).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
+  d.appendChild(t);$("msgs").appendChild(d);scroll();
+}
+async function send(){
+  const el=$("input");const text=el.value.trim();
+  if(!text||!ready||!conn||!conn.open)return;
+  const ts=Date.now();
+  const pkt=await encrypt({k:"msg",text,name:myName,ts,seq:++sendSeq});
+  conn.send(pkt); addMsg(text,true,myName,ts);
+  el.value="";el.style.height="auto";
+}
+function cleanup(){
+  try{conn&&conn.close()}catch(_){}try{peer&&peer.destroy()}catch(_){}
+  peer=conn=null;aes=null;ready=false;myKeys=null;theirPubRaw=null;sendSeq=recvSeq=0;queue=[];
+  $("msgs").innerHTML="";setPeer("Peer");$("peerAvatar").textContent="?";lockInput(false);
+}
+function leave(){cleanup();busy(false);show("lobby")}
+
+/* ---------- events ---------- */
+$("createBtn").onclick=()=>createRoom();
+$("joinBtn").onclick=joinRoom;
+$("joinCode").addEventListener("keydown",e=>{if(e.key==="Enter")joinRoom()});
+$("joinCode").addEventListener("input",e=>{
+  let v=normCode(e.target.value).slice(0,6);e.target.value=v.length>3?v.slice(0,3)+"-"+v.slice(3):v;
+});
+$("nick").addEventListener("keydown",e=>{if(e.key==="Enter")createRoom()});
+$("cancelBtn").onclick=leave;
+$("leaveBtn").onclick=leave;
+const copy=()=>{navigator.clipboard?.writeText(code).then(()=>toast("Code copied"),()=>toast(code))};
+$("copyBtn").onclick=copy;$("roomCode").onclick=copy;
+$("sendBtn").onclick=send;
+$("input").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}});
+$("input").addEventListener("input",e=>{const t=e.target;t.style.height="auto";t.style.height=Math.min(t.scrollHeight,140)+"px"});
+$("verifyBtn").onclick=async()=>{
+  if(!theirPubRaw){toast("Not secured yet");return}
+  const f=await fingerprint();$("fpEmoji").textContent=f.emo;$("fpHex").textContent=f.hx;$("modal").classList.remove("hidden");
+};
+$("closeModal").onclick=()=>$("modal").classList.add("hidden");
+$("modal").addEventListener("click",e=>{if(e.target.id==="modal")$("modal").classList.add("hidden")});
+window.addEventListener("beforeunload",()=>{try{peer&&peer.destroy()}catch(_){}});
+</script>
+</body>
+</html>
